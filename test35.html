@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PEA Digital Service Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --pea-purple: #6c2d91;
+            --pea-gold: #ffc107;
+            --bg-body: #f4f7f6;
+            --text-main: #2d3436;
+        }
+
+        body { font-family: 'Sarabun', sans-serif; background-color: var(--bg-body); margin: 0; color: var(--text-main); }
+
+        .navbar {
+            background: #fff; padding: 10px 5%; display: flex; align-items: center; justify-content: space-between;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 1000; border-bottom: 4px solid var(--pea-purple);
+        }
+
+        .brand { display: flex; align-items: center; gap: 15px; }
+        .brand img { height: 60px; object-fit: contain; }
+        .brand h1 { font-size: 1.1rem; color: var(--pea-purple); margin: 0; font-weight: 600; }
+
+        .controls { display: flex; align-items: center; gap: 12px; }
+        .filter-label { font-weight: 600; color: var(--pea-purple); font-size: 0.95rem; }
+
+        .tree-select-container { position: relative; width: 330px; font-size: 0.9rem; }
+        .tree-select-header {
+            background: #fdfbff; padding: 8px 12px; border-radius: 10px; border: 1px solid #ddd;
+            cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+            color: var(--pea-purple); font-weight: 600; min-height: 38px;
+        }
+
+        .tree-dropdown {
+            position: absolute; top: 110%; left: 0; right: 0; background: white; border: 1px solid #ddd;
+            border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-height: 480px;
+            overflow-y: auto; display: none; padding: 10px; z-index: 1001;
+        }
+        .tree-dropdown.active { display: block; }
+
+        .tree-all-box { 
+            padding: 8px; margin-bottom: 10px; background: #f4f4f4; border-radius: 8px;
+            font-weight: bold; color: var(--pea-purple); display: flex; align-items: center; gap: 8px;
+        }
+        .tree-item { margin: 4px 0; border-bottom: 1px solid #f8f8f8; padding-bottom: 4px; }
+        .tree-parent { font-weight: 600; display: flex; align-items: center; gap: 8px; padding: 4px; color: var(--pea-purple); }
+        .tree-child { margin-left: 28px; display: flex; align-items: center; gap: 8px; padding: 2px; color: #555; font-weight: 300; }
+        
+        input[type="checkbox"] { accent-color: var(--pea-purple); width: 17px; height: 17px; cursor: pointer; }
+
+        .btn-print {
+            background: var(--pea-purple); color: white; border: none; padding: 8px 16px;
+            border-radius: 10px; font-weight: 600; cursor: pointer; transition: 0.3s;
+            display: flex; align-items: center; gap: 8px; font-size: 0.9rem;
+        }
+
+        .container { max-width: 1400px; margin: 20px auto; padding: 0 20px; }
+        .card { background: #fff; border-radius: 20px; padding: 20px; margin-bottom: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        .card-header { border-left: 6px solid var(--pea-gold); padding-left: 15px; margin-bottom: 15px; }
+        .card-header h2 { margin: 0; font-size: 1.05rem; color: var(--pea-purple); }
+        .chart-container { height: 350px; width: 100%; position: relative; }
+        .chart-container.large { height: 450px; }
+
+        .table-wrapper { overflow-x: auto; border-radius: 12px; border: 1px solid #eee; margin-top: 10px; }
+        table.data-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        table.data-table th { background: #fdfbff; color: var(--pea-purple); padding: 12px 10px; text-align: left; border-bottom: 2px solid #eee; white-space: nowrap; }
+        table.data-table td { padding: 10px; border-bottom: 1px solid #f9f9f9; }
+        table.data-table tr:hover { background-color: #fcfaff; }
+
+        .custom-data-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.75rem; }
+        .custom-data-table th, .custom-data-table td { border: 1px solid #ddd; padding: 6px 4px; text-align: center; }
+        .custom-data-table th { background-color: #f8f9fa; font-weight: 600; }
+        .custom-data-table td:first-child, .custom-data-table th:first-child { text-align: left; width: 180px; padding-left: 8px;}
+        .color-box { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: middle; border-radius: 2px; }
+
+        #loader { position: fixed; inset: 0; background: white; display: flex; justify-content: center; align-items: center; z-index: 9999; flex-direction: column; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid var(--pea-purple); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        @media print { .navbar, .btn-print, .tree-select-container, .filter-label { display: none !important; } }
+    </style>
+</head>
+<body>
+
+<div id="loader">
+    <div class="spinner"></div>
+    <p style="margin-top: 15px; color: var(--pea-purple);">กำลังเตรียมข้อมูลแดชบอร์ด...</p>
+</div>
+
+<div class="navbar">
+    <div class="brand">
+        <img src="https://i.postimg.cc/rs860YqC/PEA-Logo.png" alt="PEA Logo">
+        <h1>ระบบรายงานข้อมูลสถิติรายพื้นที่</h1>
+    </div>
+    <div class="controls">
+        <span class="filter-label">เลือกพื้นที่การไฟฟ้า :</span>
+        <div class="tree-select-container">
+            <div class="tree-select-header" onclick="toggleDropdown()">
+                <span id="selectedLabel">เลือกพื้นที่การไฟฟ้า (ทั้งหมด)</span>
+                <span>▼</span>
+            </div>
+            <div id="treeDropdown" class="tree-dropdown">
+                <div class="tree-all-box">
+                    <input type="checkbox" id="selectAll" checked>
+                    <span>-- เลือกทั้งหมด --</span>
+                </div>
+            </div>
+        </div>
+        <button class="btn-print" onclick="window.print()">พิมพ์ PDF</button>
+    </div>
+</div>
+
+<div class="container">
+    <div class="card">
+        <div class="card-header"><h2>สัดส่วนข้อมูลตามพื้นที่การไฟฟ้าจุดรวมงาน (แยกตามสถานะ)</h2></div>
+        <div class="chart-container large">
+            <canvas id="mainAreaStackedChart"></canvas>
+        </div>
+        <div class="table-wrapper" style="border:none;">
+            <table class="custom-data-table" id="mainAreaTable"></table>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div class="card" style="margin-bottom: 0;">
+            <div class="card-header"><h2>1. สัดส่วนข้อมูลตามสถานะ <small style="color:#888; font-weight:normal;">(คลิกที่แท่งเพื่อกรองตาราง)</small></h2></div>
+            <div class="chart-container"><canvas id="statusBarChart"></canvas></div>
+        </div>
+        <div class="card" style="margin-bottom: 0;">
+            <div class="card-header"><h2>2. จัดอันดับ กฟฟ. สถานะ "รอตรวจสอบคำขอ (เกิน SLA)"</h2></div>
+            <div class="chart-container"><canvas id="rankingSlaChart"></canvas></div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 25px;">
+        <div class="card-header"><h2>3. อันดับ % การเชื่อมต่อเครื่องกำเนิดไฟฟ้า (ทั้งหมด 18 แห่ง)</h2></div>
+        <div class="chart-container"><canvas id="connectionPercentChart"></canvas></div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h2 id="tableTitle">รายละเอียดรายการข้อมูล</h2>
+                <span id="filterStatusBadge" style="background: var(--pea-purple); color: white; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; display:none;"></span>
+            </div>
+        </div>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead><tr id="tableHead"></tr></thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    const SHEET_ID = '15SClvSIvKz9o06xrxUkeenAAXSvjn4SRo9Dyx8GCRY0';
+    const URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tq=SELECT%20*`;
+    
+    const TARGET_COLS_INDEX = [0, 1, 2, 7, 8, 9, 12, 14, 15]; 
+    const COL_STATUS = 1; 
+    const COL_AREA_O = 14; // คอลัมน์ O สำหรับตรวจสอบการไฟฟ้าหลัก (กฟก.3)
+    const COL_AREA_P = 15; // คอลัมน์ P สำหรับการไฟฟ้าย่อย
+    const COL_NAME_R = 17; 
+    const COL_VALUE_S = 18; 
+    const TARGET_STATUS_SLA = "รอตรวจสอบคำขอ (เกิน SLA)";
+
+    const AREA_STRUCTURE = [
+        { name: "กฟจ.นครปฐม", children: ["กฟจ.นครปฐม", "กฟอ.ดอนตูม"] },
+        { name: "กฟอ.กำแพงแสน", children: ["กฟอ.กำแพงแสน"] },
+        { name: "กฟอ.บางเลน", children: ["กฟต.บางหลวง", "กฟอ.บางเลน"] },
+        { name: "กฟอ.สามพราน", children: ["กฟอ.สามพราน"] },
+        { name: "กฟอ.นครชัยศรี", children: ["กฟอ.นครชัยศรี"] },
+        { name: "กฟอ.พุทธมณฑล", children: ["กฟอ.พุทธมณฑล"] },
+        { name: "กฟจ.สมุทรสาคร", children: ["กฟจ.สมุทรสาคร", "กฟส.ต.บางน้ำจืด"] },
+        { name: "กฟต.โคกขาม", children: ["กฟต.โคกขาม"] },
+        { name: "กฟจ.สมุทรสาคร 2", children: ["กฟจ.สมุทรสาคร 2", "กฟต.คลองตัน", "กฟย.กาหลง"] },
+        { name: "กฟอ.กระทุ่มแบน", children: ["กฟอ.กระทุ่มแบน"] },
+        { name: "กฟฟ.อ้อมน้อย", children: ["กฟฟ.อ้อมน้อย"] }, 
+        { name: "กฟจ.กาญจนบุรี", children: ["กฟจ.กาญจนบุรี", "กฟอ.ท่าม่วง", "กฟบ.ตลาดสำรอง", "กฟอ.พนมทวน", "กฟอ.ห้วยกระเจา", "กฟอ.ไทรโยค", "กฟอ.ทองผาภูมิ", "กฟอ.สังขละบุรี", "กฟอ.ด่านมะขามเตี้ย", "กฟต.ลาดหญ้า", "กฟอ.ศรีสวัสดิ์", "กฟต.ท่ากระดาน"] },
+        { name: "กฟอ.บ่อพลอย", children: ["กฟอ.บ่อพลอย", "กฟอ.หนองปรือ", "กฟอ.เลาขวัญ"] },
+        { name: "กฟอ.ท่ามะกา", children: ["กฟอ.ท่ามะกา", "กฟฟ.ท่าเรือ"] },
+        { name: "กฟจ.สุพรรณบุรี", children: ["กฟจ.สุพรรณบุรี", "กฟอ.บางปลาม้า", "กฟต.มะขามล้ม", "กฟอ.ดอนเจดีย์", "กฟอ.ศรีประจันต์", "กฟอ.สามชุก"] },
+        { name: "กฟอ.อู่ทอง", children: ["กฟอ.อู่ทอง", "กฟต.สวนแตง", "กฟอ.สองพี่น้อง", "กฟต.ทุ่งคอก"] },
+        { name: "กฟอ.เดิมบางนางบวช", children: ["กฟอ.เดิมบางนางบวช", "กฟอ.ด่านช้าง", "กฟอ.หนองหญ้าไซ"] },
+        { name: "กฟก.3", children: ["กฟก.3"] }
+    ];
+
+    const MASTER_STATUS_ORDER = ["ยกเลิก", "รอตรวจสอบคำขอ", "รอตรวจสอบคำขอ (เกิน SLA)", "รอผู้ยื่นคำขอส่งเอกสารแก้ไข", "รออนุมัติเชื่อมต่อ/รับพิจารณา", "รอชำระเงิน", "รอดำเนินการหลังอนุมัติเชื่อมต่อ / รับพิจารณา", "รอแก้ไขเอกสารหลังอนุมัติเชื่อมต่อ / รับพิจารณา", "รอตรวจสอบระบบผลิต", "รออนุมัติเชื่อมต่อ (200 kW ขึ้นไป)", "รอทดสอบเชื่อมต่อ", "รออนุมัติแจ้งวันเริ่มเชื่อมต่อ", "เชื่อมต่อเรียบร้อยแล้ว"];
+    const STATUS_COLORS = ['#FF6B6B', '#4834d4', '#eb4d4b', '#f0932b', '#686de0', '#f9ca24', '#22a6b3', '#be2edd', '#6ab04c', '#4834d4', '#7ed6df', '#e056fd', '#2ecc71'];
+
+    let rawData = [];
+    let headers = [];
+    let mainStackedChart = null, myChart = null, rankingChart = null, percentChart = null;
+    let selectedStatusFilter = null; 
+
+    async function init() {
+        try {
+            const res = await fetch(URL);
+            const text = await res.text();
+            const json = JSON.parse(text.substring(47).slice(0, -2));
+            headers = json.table.cols;
+            rawData = json.table.rows;
+            buildTreeFilter();
+            renderTableHeader();
+            refreshDashboard();
+            document.getElementById('loader').style.display = 'none';
+        } catch (e) { console.error("Init Error:", e); }
+    }
+
+    function getActualArea(row) {
+        const valO = row.c[COL_AREA_O] ? String(row.c[COL_AREA_O].v).trim() : '';
+        const valP = row.c[COL_AREA_P] ? String(row.c[COL_AREA_P].v).trim() : '';
+        return (valO === "กฟก.3") ? "กฟก.3" : valP;
+    }
+
+    function buildTreeFilter() {
+        const dropdown = document.getElementById('treeDropdown');
+        AREA_STRUCTURE.forEach((parent, pIdx) => {
+            const pDiv = document.createElement('div');
+            pDiv.className = 'tree-item';
+            const pHeader = document.createElement('div');
+            pHeader.className = 'tree-parent';
+            pHeader.innerHTML = `<input type="checkbox" class="parent-check" data-pidx="${pIdx}" checked><span>${parent.name}</span>`;
+            pDiv.appendChild(pHeader);
+            parent.children.forEach((child) => {
+                const cDiv = document.createElement('div');
+                cDiv.className = 'tree-child';
+                cDiv.innerHTML = `<input type="checkbox" class="child-check" data-pidx="${pIdx}" value="${child}" checked><span>${child}</span>`;
+                pDiv.appendChild(cDiv);
+            });
+            dropdown.appendChild(pDiv);
+        });
+
+        document.getElementById('selectAll').addEventListener('change', function(e) {
+            dropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = e.target.checked);
+            refreshDashboard();
+        });
+
+        dropdown.querySelectorAll('.parent-check, .child-check').forEach(cb => {
+            cb.addEventListener('change', (e) => {
+                if(e.target.classList.contains('parent-check')) {
+                    const pidx = e.target.dataset.pidx;
+                    dropdown.querySelectorAll(`.child-check[data-pidx="${pidx}"]`).forEach(cc => cc.checked = e.target.checked);
+                } else {
+                    const pidx = e.target.dataset.pidx;
+                    const siblings = dropdown.querySelectorAll(`.child-check[data-pidx="${pidx}"]`);
+                    dropdown.querySelector(`.parent-check[data-pidx="${pidx}"]`).checked = Array.from(siblings).every(s => s.checked);
+                }
+                updateSelectAllState();
+                refreshDashboard();
+            });
+        });
+    }
+
+    function updateSelectAllState() {
+        const allCheck = document.querySelectorAll('.child-check');
+        const checkedCount = Array.from(allCheck).filter(c => c.checked).length;
+        document.getElementById('selectAll').checked = (checkedCount === allCheck.length);
+    }
+
+    function toggleDropdown() { document.getElementById('treeDropdown').classList.toggle('active'); }
+    window.onclick = function(e) { if (!e.target.closest('.tree-select-container')) document.getElementById('treeDropdown').classList.remove('active'); }
+
+    function getMainPEA(unitName) {
+        for (let i = 0; i < AREA_STRUCTURE.length; i++) {
+            if (AREA_STRUCTURE[i].children.includes(unitName)) return AREA_STRUCTURE[i].name;
+        }
+        return null;
+    }
+
+    function refreshDashboard() {
+        const selectedUnits = Array.from(document.querySelectorAll('.child-check:checked')).map(cb => cb.value);
+        const totalUnits = document.querySelectorAll('.child-check').length;
+        document.getElementById('selectedLabel').innerText = selectedUnits.length === totalUnits ? "เลือกพื้นที่การไฟฟ้า (ทั้งหมด)" : `เลือกแล้ว ${selectedUnits.length} พื้นที่`;
+        
+        const filteredByArea = rawData.filter(r => {
+            return selectedUnits.includes(getActualArea(r));
+        });
+        
+        updateMainAreaChart(filteredByArea); 
+        updateStatusChart(filteredByArea); 
+        updateRankingChart(filteredByArea);
+        updatePercentChart(rawData); 
+        
+        let tableData = filteredByArea;
+        const badge = document.getElementById('filterStatusBadge');
+        
+        if (selectedStatusFilter) {
+            tableData = filteredByArea.filter(r => {
+                const s = r.c[COL_STATUS] ? String(r.c[COL_STATUS].v).trim() : '';
+                return s === selectedStatusFilter;
+            });
+            badge.innerText = `สถานะ: ${selectedStatusFilter}`;
+            badge.style.display = 'inline-block';
+        } else {
+            badge.style.display = 'none';
+        }
+
+        updateTable(tableData);
+    }
+
+    function updateMainAreaChart(data) {
+        const ctx = document.getElementById('mainAreaStackedChart').getContext('2d');
+        const tableEl = document.getElementById('mainAreaTable');
+        const displayStatuses = MASTER_STATUS_ORDER.filter(s => s !== "ยกเลิก");
+        const mainPEAs = AREA_STRUCTURE.map(p => p.name).filter(name => name !== "กฟก.3");
+
+        let matrix = {};
+        displayStatuses.forEach(s => { matrix[s] = {}; mainPEAs.forEach(m => matrix[s][m] = 0); });
+
+        data.forEach(r => {
+            const status = r.c[COL_STATUS] ? String(r.c[COL_STATUS].v).trim() : 'ไม่ระบุ';
+            const unitName = getActualArea(r);
+            
+            if (status !== "ยกเลิก" && displayStatuses.includes(status)) {
+                const mainArea = getMainPEA(unitName);
+                if (mainArea && mainPEAs.includes(mainArea)) {
+                    matrix[status][mainArea]++;
+                }
+            }
+        });
+
+        let datasets = [];
+        displayStatuses.forEach(status => {
+            const rowTotal = mainPEAs.reduce((sum, m) => sum + matrix[status][m], 0);
+            if (rowTotal > 0) { 
+                datasets.push({
+                    label: status, data: mainPEAs.map(m => matrix[status][m]),
+                    backgroundColor: STATUS_COLORS[MASTER_STATUS_ORDER.indexOf(status)], stack: 'Stack 0'
+                });
+            }
+        });
+
+        if (mainStackedChart) mainStackedChart.destroy();
+        mainStackedChart = new Chart(ctx, {
+            type: 'bar', data: { labels: mainPEAs, datasets: datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: { x: { stacked: true, ticks: { autoSkip: false, font: {size: 10} } }, y: { stacked: true, beginAtZero: true } },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        let html = `<thead><tr><th>สถานะคำขอ</th>`;
+        mainPEAs.forEach(m => html += `<th>${m.replace(/กฟจ.|กฟอ.|กฟต./g, '')}</th>`);
+        html += `<th>รวม</th></tr></thead><tbody>`;
+        displayStatuses.forEach(status => {
+            const rowTotal = mainPEAs.reduce((sum, m) => sum + matrix[status][m], 0);
+            if (rowTotal > 0) {
+                html += `<tr><td><span class="color-box" style="background-color: ${STATUS_COLORS[MASTER_STATUS_ORDER.indexOf(status)]};"></span>${status}</td>`;
+                mainPEAs.forEach(m => html += `<td>${matrix[status][m] || '-'}</td>`);
+                html += `<td><b>${rowTotal}</b></td></tr>`;
+            }
+        });
+        tableEl.innerHTML = html;
+    }
+
+    function updateStatusChart(data) {
+        const ctx = document.getElementById('statusBarChart').getContext('2d');
+        const counts = {};
+        data.forEach(r => {
+            const s = r.c[COL_STATUS] ? String(r.c[COL_STATUS].v).trim() : 'ไม่ระบุ';
+            counts[s] = (counts[s] || 0) + 1;
+        });
+
+        const labels = [], values = [], colors = [];
+        MASTER_STATUS_ORDER.forEach((status, index) => {
+            if (counts[status]) {
+                labels.push(status);
+                values.push(counts[status]);
+                colors.push(STATUS_COLORS[index]);
+            }
+        });
+
+        if (myChart) myChart.destroy();
+        myChart = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderRadius: 6 }] },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                onHover: (event, chartElement) => {
+                    event.native.target.style.cursor = chartElement[0] ? 'pointer' : 'default';
+                },
+                onClick: (e, elements) => {
+                    if (elements.length > 0) {
+                        const idx = elements[0].index;
+                        const statusClicked = labels[idx];
+                        selectedStatusFilter = (selectedStatusFilter === statusClicked) ? null : statusClicked;
+                    } else {
+                        selectedStatusFilter = null;
+                    }
+                    refreshDashboard();
+                }
+            }
+        });
+    }
+
+    function updateRankingChart(data) {
+        const ctx = document.getElementById('rankingSlaChart').getContext('2d');
+        const slaCounts = {};
+        data.forEach(r => {
+            if ((r.c[COL_STATUS] ? String(r.c[COL_STATUS].v).trim() : '') === TARGET_STATUS_SLA) {
+                const area = getActualArea(r) || 'ไม่ระบุ';
+                slaCounts[area] = (slaCounts[area] || 0) + 1;
+            }
+        });
+        let sorted = Object.keys(slaCounts).map(k => ({a: k, c: slaCounts[k]})).sort((a,b) => b.c - a.c);
+        if (rankingChart) rankingChart.destroy();
+        rankingChart = new Chart(ctx, {
+            type: 'bar', data: { labels: sorted.map(d=>d.a), datasets: [{ data: sorted.map(d=>d.c), backgroundColor: '#eb4d4b' }] },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
+    }
+
+    function updatePercentChart(allData) {
+        const ctx = document.getElementById('connectionPercentChart').getContext('2d');
+        const percentMap = [];
+        for (let i = 0; i < Math.min(allData.length, 18); i++) {
+            const row = allData[i];
+            const peaName = row.c[COL_NAME_R] ? String(row.c[COL_NAME_R].v).trim() : `แห่งที่ ${i+1}`;
+            let val = row.c[COL_VALUE_S] ? parseFloat(row.c[COL_VALUE_S].v) : 0;
+            if (val <= 1 && val > 0) val *= 100;
+            percentMap.push({ name: peaName, percent: val });
+        }
+        percentMap.sort((a, b) => b.percent - a.percent);
+        if (percentChart) percentChart.destroy();
+        percentChart = new Chart(ctx, {
+            type: 'bar', data: { labels: percentMap.map(d => d.name), datasets: [{ data: percentMap.map(d => d.percent), backgroundColor: '#3498db' }] },
+            options: { 
+                responsive: true, maintainAspectRatio: false, 
+                scales: { y: { max: 100 } },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    function renderTableHeader() {
+        const tr = document.getElementById('tableHead');
+        TARGET_COLS_INDEX.forEach(idx => {
+            let th = document.createElement('th');
+            th.innerText = headers[idx].label || `Col ${idx}`;
+            tr.appendChild(th);
+        });
+    }
+
+    function updateTable(data) {
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+        data.forEach(row => {
+            let tr = document.createElement('tr');
+            TARGET_COLS_INDEX.forEach(idx => {
+                let td = document.createElement('td');
+                const cell = row.c[idx];
+                td.innerText = cell ? (cell.f || cell.v) : '-';
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+    }
+
+    init();
+</script>
+</body>
+</html>
